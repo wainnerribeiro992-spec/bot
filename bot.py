@@ -4,8 +4,21 @@ import discord
 import torch
 from diffusers import StableDiffusionPipeline
 from huggingface_hub import login
+from flask import Flask
+import threading
 
-# --- Tokens e configurações vindos do Render ---
+# --- Servidor Web falso para Render ---
+app = Flask(__name__)
+
+@app.route("/")
+def home():
+    return "Bot do Discord está rodando!"
+
+def run_web():
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
+
+# --- Tokens e configurações ---
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 HF_TOKEN = os.getenv("HF_TOKEN")
 MODEL_NAME = os.getenv("MODEL_NAME", "stabilityai/stable-diffusion-2")  # Modelo padrão
@@ -21,15 +34,12 @@ intents = discord.Intents.default()
 intents.message_content = True
 client = discord.Client(intents=intents)
 
-# Pipeline da IA (será carregado depois do login do bot)
 pipe = None
 
 @client.event
 async def on_ready():
     global pipe
     print(f"✅ Bot conectado como {client.user}")
-    
-    # Carrega o modelo após o bot se conectar
     print(f"🔄 Carregando modelo de IA: {MODEL_NAME} ...")
     pipe = StableDiffusionPipeline.from_pretrained(
         MODEL_NAME,
@@ -54,7 +64,6 @@ async def on_message(message):
         await message.channel.send(file=discord.File("saida.png"))
 
 async def run_bot():
-    """Executa o bot com reconexão controlada para evitar bloqueios."""
     while True:
         try:
             await client.start(DISCORD_TOKEN)
@@ -70,4 +79,5 @@ async def run_bot():
             await asyncio.sleep(10)
 
 if __name__ == "__main__":
+    threading.Thread(target=run_web).start()  # Inicia servidor web em paralelo
     asyncio.run(run_bot())
