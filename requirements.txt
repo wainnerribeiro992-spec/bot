@@ -4,3 +4,4 @@ huggingface_hub
 accelerate
 torch --index-url https://download.pytorch.org/whl/cpu
 discord.py
+flask
