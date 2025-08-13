@@ -2,5 +2,5 @@ diffusers
 transformers
 huggingface_hub
 accelerate
-torch
+torch --index-url https://download.pytorch.org/whl/cpu
 discord.py
