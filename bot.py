@@ -1,80 +1,63 @@
 import os
-from huggingface_hub import login
 import torch
-from diffusers import StableDiffusionPipeline
 import discord
 import asyncio
-from flask import Flask
+from huggingface_hub import login
+from diffusers import StableDiffusionPipeline
 
-# Tokens de autenticação
-DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
-HF_TOKEN = os.getenv("HF_TOKEN")
+# Códigos ANSI para cores no terminal
+GREEN = "\033[92m"
+YELLOW = "\033[93m"
+BLUE = "\033[94m"
+RESET = "\033[0m"
 
-# Modelo padrão (pode ser alterado via comando)
-MODEL_ID = os.getenv("MODEL_ID", "stabilityai/stable-diffusion-2")
+# Tokens
+DISCORD_TOKEN = os.getenv("DISCORD_TOKEN", "SEU_TOKEN_DISCORD")
+HF_TOKEN = os.getenv("HF_TOKEN", "SEU_TOKEN_HUGGINGFACE")
+
+print(f"{YELLOW}🟢 Container iniciado! Preparando ambiente...{RESET}")
 
 # Login na Hugging Face
+print(f"{BLUE}🔑 Fazendo login na Hugging Face...{RESET}")
 login(token=HF_TOKEN)
 
-# Discord intents
+# Intents do Discord
 intents = discord.Intents.default()
 intents.message_content = True
 client = discord.Client(intents=intents)
 
-print(f"Carregando modelo: {MODEL_ID}...")
+# Carregando modelo
+print(f"{YELLOW}🖼️  Carregando modelo de IA... Isso pode levar 1-3 minutos.{RESET}")
+MODEL_ID = os.getenv("MODEL_ID", "stabilityai/stable-diffusion-2")
 pipe = StableDiffusionPipeline.from_pretrained(
     MODEL_ID,
     torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
 )
-
 if torch.cuda.is_available():
     pipe = pipe.to("cuda")
 
+print(f"{GREEN}✅ Modelo carregado com sucesso!{RESET}")
+
 @client.event
 async def on_ready():
-    print(f"Bot conectado como {client.user}")
+    print(f"{GREEN}🤖 Bot conectado como {client.user}{RESET}")
 
 @client.event
 async def on_message(message):
-    global pipe, MODEL_ID
-
     if message.author == client.user:
         return
 
-    # Gerar imagem
     if message.content.startswith("!imagem "):
         prompt = message.content[8:].strip()
-        await message.channel.send(f"Gerando imagem para: *{prompt}*...")
+
+        await message.channel.send(f"🎨 Gerando imagem para: *{prompt}*...")
         image = pipe(prompt).images[0]
         image.save("saida.png")
+
         await message.channel.send(file=discord.File("saida.png"))
-
-    # Trocar modelo
-    if message.content.startswith("!modelo "):
-        novo_modelo = message.content[8:].strip()
-        try:
-            await message.channel.send(f"Carregando modelo: {novo_modelo}...")
-            pipe = StableDiffusionPipeline.from_pretrained(
-                novo_modelo,
-                torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
-            )
-            if torch.cuda.is_available():
-                pipe = pipe.to("cuda")
-            MODEL_ID = novo_modelo
-            await message.channel.send(f"Modelo alterado para: **{novo_modelo}**")
-        except Exception as e:
-            await message.channel.send(f"Erro ao carregar modelo: {e}")
-
-# Flask server para manter o bot vivo no Render
-app = Flask(__name__)
-
-@app.route('/')
-def home():
-    return "Bot está rodando!"
 
 async def start_bot():
     await client.start(DISCORD_TOKEN)
 
 loop = asyncio.get_event_loop()
 loop.create_task(start_bot())
-app.run(host="0.0.0.0", port=10000)
