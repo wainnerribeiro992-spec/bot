@@ -1,83 +1,80 @@
 import os
-import asyncio
-import discord
+from huggingface_hub import login
 import torch
 from diffusers import StableDiffusionPipeline
-from huggingface_hub import login
+import discord
+import asyncio
 from flask import Flask
-import threading
 
-# --- Servidor Web falso para Render ---
-app = Flask(__name__)
-
-@app.route("/")
-def home():
-    return "Bot do Discord está rodando!"
-
-def run_web():
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
-
-# --- Tokens e configurações ---
+# Tokens de autenticação
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 HF_TOKEN = os.getenv("HF_TOKEN")
-MODEL_NAME = os.getenv("MODEL_NAME", "stabilityai/stable-diffusion-2")  # Modelo padrão
 
-if not DISCORD_TOKEN or not HF_TOKEN:
-    raise ValueError("Erro: variáveis de ambiente DISCORD_TOKEN e HF_TOKEN não foram definidas.")
+# Modelo padrão (pode ser alterado via comando)
+MODEL_ID = os.getenv("MODEL_ID", "stabilityai/stable-diffusion-2")
 
-# Login Hugging Face
+# Login na Hugging Face
 login(token=HF_TOKEN)
 
-# Configurações do Discord
+# Discord intents
 intents = discord.Intents.default()
 intents.message_content = True
 client = discord.Client(intents=intents)
 
-pipe = None
+print(f"Carregando modelo: {MODEL_ID}...")
+pipe = StableDiffusionPipeline.from_pretrained(
+    MODEL_ID,
+    torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+)
+
+if torch.cuda.is_available():
+    pipe = pipe.to("cuda")
 
 @client.event
 async def on_ready():
-    global pipe
-    print(f"✅ Bot conectado como {client.user}")
-    print(f"🔄 Carregando modelo de IA: {MODEL_NAME} ...")
-    pipe = StableDiffusionPipeline.from_pretrained(
-        MODEL_NAME,
-        torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
-    )
-    if torch.cuda.is_available():
-        pipe = pipe.to("cuda")
-    print(f"✅ Modelo '{MODEL_NAME}' carregado com sucesso!")
+    print(f"Bot conectado como {client.user}")
 
 @client.event
 async def on_message(message):
+    global pipe, MODEL_ID
+
     if message.author == client.user:
         return
 
+    # Gerar imagem
     if message.content.startswith("!imagem "):
         prompt = message.content[8:].strip()
-
-        await message.channel.send(f"🎨 Gerando imagem usando `{MODEL_NAME}` para: *{prompt}*...")
+        await message.channel.send(f"Gerando imagem para: *{prompt}*...")
         image = pipe(prompt).images[0]
         image.save("saida.png")
-
         await message.channel.send(file=discord.File("saida.png"))
 
-async def run_bot():
-    while True:
+    # Trocar modelo
+    if message.content.startswith("!modelo "):
+        novo_modelo = message.content[8:].strip()
         try:
-            await client.start(DISCORD_TOKEN)
-        except discord.errors.HTTPException as e:
-            if e.status == 429:
-                print("⚠ Rate limit detectado! Esperando 60 segundos...")
-                await asyncio.sleep(60)
-            else:
-                print(f"⚠ Erro HTTPException: {e}")
-                await asyncio.sleep(10)
+            await message.channel.send(f"Carregando modelo: {novo_modelo}...")
+            pipe = StableDiffusionPipeline.from_pretrained(
+                novo_modelo,
+                torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+            )
+            if torch.cuda.is_available():
+                pipe = pipe.to("cuda")
+            MODEL_ID = novo_modelo
+            await message.channel.send(f"Modelo alterado para: **{novo_modelo}**")
         except Exception as e:
-            print(f"⚠ Erro inesperado: {e}")
-            await asyncio.sleep(10)
+            await message.channel.send(f"Erro ao carregar modelo: {e}")
 
-if __name__ == "__main__":
-    threading.Thread(target=run_web).start()  # Inicia servidor web em paralelo
-    asyncio.run(run_bot())
+# Flask server para manter o bot vivo no Render
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "Bot está rodando!"
+
+async def start_bot():
+    await client.start(DISCORD_TOKEN)
+
+loop = asyncio.get_event_loop()
+loop.create_task(start_bot())
+app.run(host="0.0.0.0", port=10000)
