@@ -1,7 +1,2 @@
-torch==2.8.0 --index-url https://download.pytorch.org/whl/cpu
-diffusers
-transformers
-huggingface_hub
-accelerate
-discord.py==2.5.2
-flask
+discord.py
+requests
