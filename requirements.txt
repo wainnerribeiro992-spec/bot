@@ -1,7 +1,6 @@
+diffusers
+transformers
+huggingface_hub
+accelerate
+torch
 discord.py
-requests
-
-
-
-
-
